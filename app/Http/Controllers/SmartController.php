@@ -23,10 +23,12 @@ class SmartController extends Controller
             Criteria::create([
                 'name' => $criterion['name'],
                 'weight' => $criterion['weight'],
+                'utility' => $criterion['utility'], // Pastikan ada nilai untuk kolom utility
             ]);
         }
         return redirect('/');
     }
+
 
     public function storeAlternative(Request $request)
     {
