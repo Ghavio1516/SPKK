@@ -29,7 +29,6 @@ class SmartController extends Controller
         return redirect('/');
     }
 
-
     public function storeAlternative(Request $request)
     {
         $validated = $request->validate([
@@ -72,12 +71,22 @@ class SmartController extends Controller
         $alternatives = Alternative::all();
         $values = AlternativeValue::all();
 
+        // Normalisasi bobot kriteria
+        $totalWeight = $criteria->sum('weight');
+        $criteria->each(function ($criterion) use ($totalWeight) {
+            $criterion->normalized_weight = $criterion->weight / $totalWeight;
+        });
+
+        // Hitung skor untuk setiap alternatif
         $rankings = $alternatives->map(function($alternative) use ($criteria, $values) {
             $score = 0;
             foreach ($criteria as $criterion) {
-                $value = $values->where('alternative_id', $alternative->id)->where('criteria_id', $criterion->id)->first();
+                $value = $values->where('alternative_id', $alternative->id)
+                                ->where('criteria_id', $criterion->id)
+                                ->first();
                 if ($value) {
-                    $score += $value->value * $criterion->weight;
+                    $normalizedValue = $this->calculateUtility($value->value, $criterion);
+                    $score += $normalizedValue * $criterion->normalized_weight;
                 }
             }
             return (object) [
@@ -86,9 +95,23 @@ class SmartController extends Controller
             ];
         });
 
-        $rankings = $rankings->sortByDesc('score');
+        // Sort rankings by score in descending order
+        $rankings = $rankings->sortByDesc('score')->values();
 
-        return view('results', compact('rankings'));
+        return view('results', ['rankings' => $rankings]);
+    }
+
+    private function calculateUtility($value, $criterion)
+    {
+        $criteriaValues = AlternativeValue::where('criteria_id', $criterion->id)->get();
+        $minValue = $criteriaValues->min('value');
+        $maxValue = $criteriaValues->max('value');
+
+        if ($criterion->utility == 'cost') {
+            return ($maxValue - $value) / ($maxValue - $minValue);
+        } else { // benefit
+            return ($value - $minValue) / ($maxValue - $minValue);
+        }
     }
 
     public function deleteCriteria($id)
